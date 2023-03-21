@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  chatgpt-slackbot:
+    build:
+      context: .
+    container_name: chatgpt-slackbot
+    environment:
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      - ./app:/usr/src/app
+
