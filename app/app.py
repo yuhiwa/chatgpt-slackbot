@@ -52,8 +52,11 @@ def get_messages(identifier):
 
 @app.message(re.compile("get-chatgpt-system"))
 def message_set_system(message, say, context):
-    system_message = get_messages("system")
-    say(system_message)
+    if check_system_message():
+        system_message = get_messages('system')
+        say(system_message)
+    else:
+        say("AI behavior is nothing.")
 
 @app.message(re.compile("set-chatgpt-system (.*)"))
 def message_set_system(message, say, context):
@@ -63,9 +66,8 @@ def message_set_system(message, say, context):
 
 @app.message(re.compile("unset-chatgpt-system"))
 def message_unset_system(message, say, context):
-    user_input = ""
-    identifier = 'system'
-    set_messages(identifier, user_input)
+    if check_system_message():
+        os.remove(os.path.dirname(os.path.abspath(__file__)) + "/" + "system" + ".cache")
     say("AI behavior returned to normal.")
 
 def completion(new_message_text, settings_text, past_messages):
