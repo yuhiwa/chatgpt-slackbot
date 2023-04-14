@@ -1,15 +1,13 @@
-from slack_bolt import App
-from slack_bolt.adapter.socket_mode import SocketModeHandler
-import re
-import os
-import time
+from slack_bolt import App from slack_bolt.adapter.socket_mode import SocketModeHandler import re import os import time
 import pickle
+import json
 import openai
 
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 SLACK_APP_TOKEN = os.getenv("SLACK_APP_TOKEN")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 HISTORY_TIME = 60
+MAX_RETRIES = 10
 
 app = App(token=SLACK_BOT_TOKEN)
 
@@ -21,6 +19,8 @@ def check_messages(identifier):
     file_path = os.path.dirname(os.path.abspath(__file__)) + "/" + identifier + ".cache"
     if not os.path.exists(file_path):
         return False
+    if HISTORY_TIME == 0:
+        return True
     file_mtime = os.path.getmtime(file_path)
     now = time.time()
     diff = now - file_mtime
@@ -28,6 +28,29 @@ def check_messages(identifier):
         return True
     else:
         return False
+
+@app.message(re.compile("get-chatgpt-history"))
+def message_get_user(message, say, context):
+    user = message['user']
+    channel = message['channel']
+    identifier = user + channel
+
+    if check_messages(identifier):
+        message_history = json.dumps(get_messages(identifier), ensure_ascii=False)
+
+        say(message_history)
+    else:
+        say("No conversation history.")
+
+@app.message(re.compile("delete-chatgpt-history"))
+def message_delete_user(message, say, context):
+    user = message['user']
+    channel = message['channel']
+    identifier = user + channel
+
+    if check_messages(identifier):
+        os.remove(os.path.dirname(os.path.abspath(__file__)) + "/" + identifier + ".cache")
+    say("User history deleted.")
 
 def check_system_message():
     file_path = os.path.dirname(os.path.abspath(__file__)) + "/" + "system" + ".cache"
@@ -76,14 +99,23 @@ def completion(new_message_text, settings_text, past_messages):
     new_message = {"role": "user", "content": new_message_text}
     past_messages.append(new_message)
 
-    result = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=past_messages
-    )
-    response_message = {"role": "assistant", "content": result.choices[0].message.content}
-    past_messages.append(response_message)
-    response_message_text = result.choices[0].message.content
-    return response_message_text, past_messages
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            result = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=past_messages
+            )
+            response_message = {"role": "assistant", "content": result.choices[0].message.content}
+            past_messages.append(response_message)
+            response_message_text = result.choices[0].message.content
+            return response_message_text, past_messages
+        except Exception as e:
+            print(f"Error: {e}")
+            retries += 1
+            print(f"Retrying ({retries} of {MAX_RETRIES})...")
+            time.sleep(3)
+    return None
 
 @app.event("app_mention")
 def message_mention(body, say):
